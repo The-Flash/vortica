@@ -9,4 +9,5 @@ axum.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-uuid = { "version" = "1.26.1", features = ["v4"] }
+tokio-stream.workspace = true
+uuid = { "version" = "1.26.1", features = ["v4", "serde"] }
