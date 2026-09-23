@@ -11,6 +11,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::Serialize;
+use serde_json::json;
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 use uuid::Uuid;
 
@@ -69,25 +70,29 @@ async fn vortex_stream(
     Path(id): Path<Uuid>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.tx_events.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(move |result| {
-        let event = result.ok()?;
-
-        match event {
-            VortexEvent::Event {
+    let stream = BroadcastStream::new(rx)
+        .filter_map(move |result| {
+            let VortexEvent::Event {
                 id: vortex_id,
-                state: _,
-            } => {
-                if vortex_id == id {
-                    return Some(Ok(Event::default()
-                        .event("vortex")
-                        .json_data(event)
-                        .ok()?));
-                } else {
-                    return None;
-                }
+                state: vortex_state,
+            } = result.ok()?;
+
+            if vortex_id != id {
+                return None;
             }
-        }
-    });
+
+            let sse_event = Event::default()
+                .event("vortex")
+                .json_data(json!({
+                    "state": vortex_state
+                }))
+                .ok()?;
+            return Some((sse_event, vortex_state));
+        })
+        .take_while(|(_, vortex_state)| {
+            return !matches!(vortex_state, VortexState::Collapsed);
+        })
+        .map(|(sse_event, _)| Ok(sse_event));
 
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
